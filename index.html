@@ -3,9 +3,28 @@
 <head>
 <meta charset="utf-8">
 <title>Taiko</title>
+<style>
+.container {
+  width: 800px;
+  height: 600px;
+  margin-right: auto;
+  margin-left: auto;
+}
+.content {
+  width: 800px;
+  height: 600px;
+}
+.track {
+  position: absolute;
+}
+</style>
 </head>
 
 <body>
 <script src="taiko.js"></script>
+<div class="container">
+  <canvas id="canvas" class="track" width="800" height="600"></canvas>
+  <img src="assets/back.png" class="content back">
+</div>
 </body>
 </html>
