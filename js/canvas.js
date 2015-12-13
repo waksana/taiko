@@ -65,6 +65,14 @@ module.exports = function(context) {
   return Promise.all(tasks).then(function(imgs) {
     var colors = ['#5FC1C0', '#E9311A', '#E9311A', '#5FC1C0'];
     return {
+      score: function(count) {
+        var c = count.toString();
+        context.fillStyle = 'black';
+        context.font="50px Arial";
+        //context.font="50px Georgia";
+        var width = context.measureText(c).width;
+        context.fillText(c, 790 - width, 50);
+      },
       good: appear.bind(null, imgs[12]),
       pass: appear.bind(null, imgs[13]),
       face: function(centerX, centerY, donka, radius) {

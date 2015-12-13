@@ -1,5 +1,6 @@
 var state = {
   running: false,
+  score: 0,
   auto: false,
   index: 0,
   keyPress: {
@@ -41,6 +42,8 @@ taiko.on('load', function(canvasAPI, audioAPI, beatmapAPI) {
     state.index++;
     state.combo.count++;
     state.combo.stage = 7;
+    if(judge == 'good') state.score += 3;
+    else state.score += 1;
     state.res.push({
       type: judge,
       stage: 7
@@ -82,6 +85,7 @@ taiko.on('load', function(canvasAPI, audioAPI, beatmapAPI) {
       return state.auto = !state.auto;
     }
     if(cmd == 'reset') {
+      state.score = 0;
       state.index = 0;
       state.combo.count = 0;
     }
@@ -113,6 +117,7 @@ taiko.on('load', function(canvasAPI, audioAPI, beatmapAPI) {
   canvasAPI.key(state.keyPress);
   setInterval(function() {
     canvasAPI.clear();
+    canvasAPI.score(state.score);
     if(state.combo.count > 0) {
       canvasAPI.combo(state.combo);
       if(state.combo.stage < 10)
@@ -147,6 +152,7 @@ taiko.on('load', function(canvasAPI, audioAPI, beatmapAPI) {
       var face = data[i][1] == 0? 'don': 'ka';
       canvasAPI.face(centerX, config.y, face, config.radius);
     }
+
   }, 16);
 });
 
