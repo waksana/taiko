@@ -1,5 +1,6 @@
 var state = {
   running: false,
+  auto: false,
   index: 0,
   keyPress: {
     ld: false,
@@ -16,7 +17,8 @@ var state = {
   cmdMap: {
     80: 'toggle',
     82: 'reset',
-    83: 'speed'
+    83: 'speed',
+    65: 'auto'
   },
   res: [],
   combo: {
@@ -76,6 +78,9 @@ taiko.on('load', function(canvasAPI, audioAPI, beatmapAPI) {
   });
 
   taiko.on('cmd', function(cmd) {
+    if(cmd == 'auto') {
+      return state.auto = !state.auto;
+    }
     if(cmd == 'reset') {
       state.index = 0;
       state.combo.count = 0;
@@ -124,6 +129,13 @@ taiko.on('load', function(canvasAPI, audioAPI, beatmapAPI) {
     var currentTime = beatmapAPI.music.currentTime * 1000;
     //'before', 'miss', 'pass', 'good', 'pass', 'after'
     //
+    if(state.auto && beatmapAPI.state(state.index) == 'good') {
+      var beat;
+      if(beatmapAPI.data[state.index][1] == 0) beat = 'd';
+      else beat = 'k';
+      taiko.emit('hit', beat);
+    }
+
     while(beatmapAPI.state(state.index) == 'after')
       taiko.emit('miss');
     var i = state.index;

@@ -8,6 +8,8 @@ slowdown/speedup: `S`
 
 reset: `R`
 
+autoplay: `A`
+
 咚: `F` `J`
 
 咔: `D` `K`
