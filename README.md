@@ -15,6 +15,14 @@ autoplay: `A`
 咔: `D` `K`
 
 
-目前只有一首曲目, 欢迎添加
+## 曲目列表
 
-[gear up](http://waksana.github.io/taiko/?beatmap=gear_up)
+欢迎添加!曲目由OSU beatmap导入
+
+* [gear up](http://waksana.github.io/taiko/?beatmap=gear_up)
+
+* [transformation](http://waksana.github.io/taiko/?beatmap=transformation)
+
+## TODO
+
+目前只能判断常规鼓点
