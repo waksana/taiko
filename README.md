@@ -2,15 +2,15 @@
 
 操作方式:
 
-play/pause: _P_
+play/pause: `P`
 
-slowdown/speedup: _S_
+slowdown/speedup: `S`
 
-reset: _R_
+reset: `R`
 
-咚: _F_ _J_
+咚: `F` `J`
 
-咔: _D_ _K_
+咔: `D` `K`
 
 
 目前只有一首曲目, 欢迎添加
