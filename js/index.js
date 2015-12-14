@@ -22,6 +22,7 @@ var state = {
     65: 'auto'
   },
   res: [],
+  record: [],
   combo: {
     count: 0,
     stage: 7
@@ -39,6 +40,7 @@ var taiko = new EventEmitter();
 
 taiko.on('load', function(canvasAPI, audioAPI, beatmapAPI) {
   taiko.on('count', function(judge) {
+    state.record[state.index] = true;
     state.index++;
     state.combo.count++;
     state.combo.stage = 7;
@@ -68,6 +70,7 @@ taiko.on('load', function(canvasAPI, audioAPI, beatmapAPI) {
       var res = beatmapAPI.state(state.index);
       var currectCode = beatmapAPI.data[state.index][1];
 
+      state.record[state.index] = true;
       if(res == 'good' || res == 'pass') {
         if(currectCode == code)
           taiko.emit('count', res);
@@ -77,6 +80,9 @@ taiko.on('load', function(canvasAPI, audioAPI, beatmapAPI) {
       else if(res == 'miss') {
         taiko.emit('miss');
       }
+      else {
+        state.record[state.index] = false;
+      }
     }
   });
 
@@ -85,6 +91,7 @@ taiko.on('load', function(canvasAPI, audioAPI, beatmapAPI) {
       return state.auto = !state.auto;
     }
     if(cmd == 'reset') {
+      state.record = [];
       state.score = 0;
       state.index = 0;
       state.combo.count = 0;
@@ -145,13 +152,31 @@ taiko.on('load', function(canvasAPI, audioAPI, beatmapAPI) {
       taiko.emit('miss');
     var i = state.index;
     while(i < data.length && data[i][0] - currentTime < config.duration) i++;
+
+    var src = config.src + config.radius;
+    var tpp = config.duration / (src - config.dest);
+
     while(--i >= state.index) {
       var time = data[i][0] - currentTime;
       var src = config.src + config.radius;
-      var centerX = (src - config.dest) * time / config.duration + config.dest;
+      var centerX = time / tpp + config.dest;
       var face = data[i][1] == 0? 'don': 'ka';
       canvasAPI.face(centerX, config.y, face, config.radius);
     }
+
+    var newDest = 0 - config.radius;
+    var newSrc = config.dest;
+    var newDuration = tpp * (newSrc - newDest);
+
+    while(i >= 0 && currentTime - data[i][0] < newDuration) {
+      if(!state.record[i]) {
+        var time = currentTime - data[i][0];
+        var centerX = newSrc - (time / tpp);
+        var face = data[i][1] == 0? 'don': 'ka';
+        canvasAPI.face(centerX, config.y, face, config.radius);
+      }
+      --i;
+    };
 
   }, 16);
 });
