@@ -1,28 +1,14 @@
-
-var xhr = require('./xhr');
+var load = require('./load');
 var qs = require('querystring');
-
-function getMusic(name) {
-  var music = new Audio();
-  var done = new Promise(function(res, rej) {
-    music.onerror = function(e) {
-      rej(new Error('fetching ' + name + ' failed'));
-    };
-    music.addEventListener('canplaythrough', function() {
-      res(music);
-    });
-  });
-  music.src = name + '.mp3';
-  return done;
-};
 
 module.exports = function() {
   var query = window.location.search.substr(1);
   var name = qs.parse(query).beatmap;
   if(!name)
     return Promise.reject(new Error('no beatmap'));
+
   var filePath = 'beatmaps/' + name;
-  return Promise.all([getMusic(filePath), xhr(filePath + '.json', 'json')])
+  return Promise.all([load(filePath + '.mp3'), load(filePath + '.json')])
   .then(function(res) {
     var music = res[0];
     var data = res[1];

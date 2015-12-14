@@ -1,4 +1,4 @@
-var xhr = require('./xhr');
+var load = require('./load');
 
 module.exports = function() {
   var context = new AudioContext();
@@ -19,8 +19,8 @@ module.exports = function() {
   };
 
   return Promise.all([
-    xhr('assets/don.wav', 'arraybuffer').then(audioData),
-    xhr('assets/ka.wav', 'arraybuffer').then(audioData)
+    load('assets/don.wav').then(audioData),
+    load('assets/ka.wav').then(audioData)
   ]).then(function(buffers) {
     return {
       don: play(buffers[0]),

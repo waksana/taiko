@@ -478,7 +478,7 @@ exports.decode = exports.parse = require('./decode');
 exports.encode = exports.stringify = require('./encode');
 
 },{"./decode":2,"./encode":3}],5:[function(require,module,exports){
-var xhr = require('./xhr');
+var load = require('./load');
 
 module.exports = function() {
   var context = new AudioContext();
@@ -499,8 +499,8 @@ module.exports = function() {
   };
 
   return Promise.all([
-    xhr('assets/don.wav', 'arraybuffer').then(audioData),
-    xhr('assets/ka.wav', 'arraybuffer').then(audioData)
+    load('assets/don.wav').then(audioData),
+    load('assets/ka.wav').then(audioData)
   ]).then(function(buffers) {
     return {
       don: play(buffers[0]),
@@ -509,32 +509,18 @@ module.exports = function() {
   });
 };
 
-},{"./xhr":10}],6:[function(require,module,exports){
-
-var xhr = require('./xhr');
+},{"./load":10}],6:[function(require,module,exports){
+var load = require('./load');
 var qs = require('querystring');
-
-function getMusic(name) {
-  var music = new Audio();
-  var done = new Promise(function(res, rej) {
-    music.onerror = function(e) {
-      rej(new Error('fetching ' + name + ' failed'));
-    };
-    music.addEventListener('canplaythrough', function() {
-      res(music);
-    });
-  });
-  music.src = name + '.mp3';
-  return done;
-};
 
 module.exports = function() {
   var query = window.location.search.substr(1);
   var name = qs.parse(query).beatmap;
   if(!name)
     return Promise.reject(new Error('no beatmap'));
+
   var filePath = 'beatmaps/' + name;
-  return Promise.all([getMusic(filePath), xhr(filePath + '.json', 'json')])
+  return Promise.all([load(filePath + '.mp3'), load(filePath + '.json')])
   .then(function(res) {
     var music = res[0];
     var data = res[1];
@@ -572,7 +558,9 @@ module.exports = function() {
   });
 };
 
-},{"./xhr":10,"querystring":4}],7:[function(require,module,exports){
+},{"./load":10,"querystring":4}],7:[function(require,module,exports){
+var load = require('./load');
+
 module.exports = function(context) {
   function genMap(count, max) {
     var res = [];
@@ -626,16 +614,7 @@ module.exports = function(context) {
     'assets/blue.png',
     'assets/good.png',
     'assets/pass.png'
-  ]).map(function(src) {
-    var img = new Image();
-    var done = new Promise(function(res, rej) {
-      img.addEventListener('load', function() {
-        res(img);
-      });
-    });
-    img.src = src;
-    return done;
-  });
+  ]).map(load);
 
   return Promise.all(tasks).then(function(imgs) {
     var colors = ['#5FC1C0', '#E9311A', '#E9311A', '#5FC1C0'];
@@ -687,7 +666,7 @@ module.exports = function(context) {
   })
 };
 
-},{}],8:[function(require,module,exports){
+},{"./load":10}],8:[function(require,module,exports){
 module.exports={
   "y": 160,
   "dest": 84,
@@ -892,8 +871,7 @@ window.addEventListener('load', function() {
 });
 
 },{"./audio":5,"./beatmap":6,"./canvas":7,"./config":8,"events":1}],10:[function(require,module,exports){
-
-module.exports = function xhr(link, type) {
+function xhr(link, type) {
   return new Promise(function(res, rej) {
     var request = new XMLHttpRequest();
     request.open('GET', link, true);
@@ -905,6 +883,29 @@ module.exports = function xhr(link, type) {
     });
     request.send();
   });
+}
+
+function ele(link, element, event) {
+  var done = new Promise(function(res, rej) {
+    element.onerror = function(e) {
+      rej(new Error('fetching ' + link + ' failed'));
+    };
+    element.addEventListener(event, function() {
+      res(element);
+    });
+  });
+  element.src = link;
+  return done;
+}
+
+module.exports = function(link) {
+  var suffix = (link.match(/\.(\w+)$/) || [])[1];
+  switch(suffix) {
+    case 'png': return ele(link, new Image(), 'load');
+    case 'mp3': return ele(link, new Audio(), 'canplaythrough');
+    case 'json': return xhr(link, 'json');
+    default: return xhr(link, 'arraybuffer');
+  }
 };
 
 },{}]},{},[9]);

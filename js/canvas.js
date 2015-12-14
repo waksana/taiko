@@ -1,3 +1,5 @@
+var load = require('./load');
+
 module.exports = function(context) {
   function genMap(count, max) {
     var res = [];
@@ -51,16 +53,7 @@ module.exports = function(context) {
     'assets/blue.png',
     'assets/good.png',
     'assets/pass.png'
-  ]).map(function(src) {
-    var img = new Image();
-    var done = new Promise(function(res, rej) {
-      img.addEventListener('load', function() {
-        res(img);
-      });
-    });
-    img.src = src;
-    return done;
-  });
+  ]).map(load);
 
   return Promise.all(tasks).then(function(imgs) {
     var colors = ['#5FC1C0', '#E9311A', '#E9311A', '#5FC1C0'];
