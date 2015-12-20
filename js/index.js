@@ -1,193 +1,95 @@
-var state = {
-  running: false,
-  score: 0,
-  auto: false,
-  index: 0,
-  keyPress: {
-    ld: false,
-    rd: false,
-    lk: false,
-    rk: false
-  },
-  codeMap: {
-    74: 'rd',
-    70: 'ld',
-    68: 'lk',
-    75: 'rk'
-  },
-  cmdMap: {
-    80: 'toggle',
-    82: 'reset',
-    83: 'speed',
-    65: 'auto'
-  },
-  res: [],
-  record: [],
-  combo: {
-    count: 0,
-    stage: 7
-  }
-};
+var Event = require('events');
 
-var EventEmitter = require('events');
-var canvas = require('./canvas');
+var graph = require('./graph');
 var audio = require('./audio');
 var beatmap = require('./beatmap');
+var key = require('./key');
 
-var config = require('./config');
+var state = {
+  score: 0,
+  combo: 0,
+  auto: false
+};
 
-var taiko = new EventEmitter();
-
-taiko.on('load', function(canvasAPI, audioAPI, beatmapAPI) {
-  taiko.on('count', function(judge) {
-    state.record[state.index] = true;
-    state.index++;
-    state.combo.count++;
-    state.combo.stage = 7;
-    if(judge == 'good') state.score += 3;
-    else state.score += 1;
-    state.res.push({
-      type: judge,
-      stage: 7
-    });
-  });
-  taiko.on('miss', function() {
-    state.index++;
-    state.combo.count = 0;
-  });
-
-  taiko.on('hit', function(act) {
-    var code;
-    if(act.endsWith('d')) {
-      code = 0;
-      audioAPI.don();
-    }
-    else {
-      code = 8;
-      audioAPI.ka();
-    }
-    if(!beatmapAPI.music.paused && state.index < beatmapAPI.data.length) {
-      var res = beatmapAPI.state(state.index);
-      var currectCode = beatmapAPI.data[state.index][1];
-
-      state.record[state.index] = true;
-      if(res == 'good' || res == 'pass') {
-        if(currectCode == code)
-          taiko.emit('count', res);
-        else
-          taiko.emit('miss');
-      }
-      else if(res == 'miss') {
-        taiko.emit('miss');
-      }
-      else {
-        state.record[state.index] = false;
-      }
-    }
-  });
-
-  taiko.on('cmd', function(cmd) {
-    if(cmd == 'auto') {
-      return state.auto = !state.auto;
-    }
-    if(cmd == 'reset') {
-      state.record = [];
-      state.score = 0;
-      state.index = 0;
-      state.combo.count = 0;
-    }
-    beatmapAPI[cmd]();
-  });
-
-  window.addEventListener('keydown', function(event) {
-    var cmd = state.cmdMap[event.keyCode];
-    if(cmd) taiko.emit('cmd', cmd);
-    var act = state.codeMap[event.keyCode];
-    if(act && !state.keyPress[act]) {
-      state.keyPress[act] = true;
-      canvasAPI.key(state.keyPress);
-      taiko.emit('hit', act);
-    }
-  });
-
-  window.addEventListener('keyup', function(event) {
-    var act = state.codeMap[event.keyCode];
-    if(act) {
-      state.keyPress[act] = false;
-      canvasAPI.key(state.keyPress);
-    }
-  });
-
-  if(state.running) return;
-  state.running = true;
-
-  canvasAPI.key(state.keyPress);
-  setInterval(function() {
-    canvasAPI.clear();
-    canvasAPI.score(state.score);
-    if(state.combo.count > 0) {
-      canvasAPI.combo(state.combo);
-      if(state.combo.stage < 10)
-        state.combo.stage++;
-    }
-    state.res.filter(function(state) {
-      return state.stage < 15;
-    }).forEach(function(state) {
-      canvasAPI[state.type](state.stage);
-      state.stage = state.stage + 1;
-    });
-
-    var data = beatmapAPI.data;
-    var currentTime = beatmapAPI.music.currentTime * 1000;
-    //'before', 'miss', 'pass', 'good', 'pass', 'after'
-    //
-    if(state.auto && beatmapAPI.state(state.index) == 'good') {
-      var beat;
-      if(beatmapAPI.data[state.index][1] == 0) beat = 'd';
-      else beat = 'k';
-      taiko.emit('hit', beat);
-    }
-
-    while(beatmapAPI.state(state.index) == 'after')
-      taiko.emit('miss');
-    var i = state.index;
-    while(i < data.length && data[i][0] - currentTime < config.duration) i++;
-
-    var src = config.src + config.radius;
-    var tpp = config.duration / (src - config.dest);
-
-    while(--i >= state.index) {
-      var time = data[i][0] - currentTime;
-      var src = config.src + config.radius;
-      var centerX = time / tpp + config.dest;
-      var face = data[i][1] == 0? 'don': 'ka';
-      canvasAPI.face(centerX, config.y, face, config.radius);
-    }
-
-    var newDest = 0 - config.radius;
-    var newSrc = config.dest;
-    var newDuration = tpp * (newSrc - newDest);
-
-    while(i >= 0 && currentTime - data[i][0] < newDuration) {
-      if(!state.record[i]) {
-        var time = currentTime - data[i][0];
-        var centerX = newSrc - (time / tpp);
-        var face = data[i][1] == 0? 'don': 'ka';
-        canvasAPI.face(centerX, config.y, face, config.radius);
-      }
-      --i;
-    };
-
-  }, 16);
-});
+var taiko = new Event();
 
 window.addEventListener('load', function() {
-  var can = document.getElementById('canvas');
-  var context = can.getContext('2d');
-  Promise.all([canvas(context), audio(), beatmap()]).then(function(apis) {
-    taiko.emit('load', apis[0], apis[1], apis[2]);
+
+  var loads = [graph.load(), audio.load(), beatmap.load()];
+
+  Promise.all(loads).then(function() {
+
+    graph.drum({});
+
+    key.on('hit', function(donka, drum_state) {
+      var dk = donka.endsWith('d')?'don':'ka';
+      graph.drum(drum_state);
+      taiko.emit('hit', dk);
+    });
+
+    key.on('hitup', function(donka, drum_state) {
+      graph.drum(drum_state);
+    });
+    key.on('play', beatmap.play);
+    key.on('reset', function() {
+      state.score = 0;
+      state.combo = 0;
+      graph.combo(0);
+      beatmap.reset();
+    });
+    key.on('speed', beatmap.speed);
+    key.on('auto', function() {
+      state.auto = !state.auto;
+    });
+
+    taiko.on('hit', function(dk) {
+      audio.play(dk);
+      var res = beatmap.hit(dk);
+      if(res == 'good' || res == 'pass')
+        taiko.emit('ok', res);
+      taiko.emit(res);
+
+    });
+
+    taiko.on('ok', function(res) {
+      graph.combo(++state.combo);
+      graph.fire(res);
+    });
+    taiko.on('good', function() {
+      state.score += 3;
+    });
+    taiko.on('pass', function() {
+      state.score += 1;
+    });
+    taiko.on('miss', function() {
+      state.combo = 0;
+      graph.combo(0);
+    });
+
+    key.load();
+    setInterval(loop, 16);
   }).catch(function(e) {
     alert(e.message);
     console.log(e);
   });
+
 });
+
+function loop() {
+  var missed = beatmap.search();
+  if(missed) taiko.emit('miss');
+
+  graph.clear();
+  graph.loop();
+  graph.track(beatmap.state());
+  graph.score(state.score);
+
+  if(state.auto && beatmap.result() == 'good') {
+    var bstate = beatmap.state();
+    var beat;
+    if(bstate.beatmap[bstate.index][1] == 0) beat = 'don';
+    else beat = 'ka';
+
+    taiko.emit('hit', beat);
+  }
+};

@@ -480,7 +480,8 @@ exports.encode = exports.stringify = require('./encode');
 },{"./decode":2,"./encode":3}],5:[function(require,module,exports){
 var load = require('./load');
 
-module.exports = function() {
+exports.load = function() {
+
   var context = new AudioContext();
 
   function audioData(arraybuffer) {
@@ -489,23 +490,19 @@ module.exports = function() {
     });
   }
 
-  function play(audioBuffer) {
-    return function() {
-      var source = context.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(context.destination);
-      source.start();
-    };
-  };
-
   return Promise.all([
     load('assets/don.wav').then(audioData),
     load('assets/ka.wav').then(audioData)
   ]).then(function(buffers) {
-    return {
-      don: play(buffers[0]),
-      ka: play(buffers[1])
-    }
+
+    exports.play = function(donka) {
+      var source = context.createBufferSource();
+      if(donka == 'don') source.buffer = buffers[0];
+      else source.buffer = buffers[1];
+      source.connect(context.destination);
+      source.start();
+    };
+
   });
 };
 
@@ -513,364 +510,436 @@ module.exports = function() {
 var load = require('./load');
 var qs = require('querystring');
 
-module.exports = function() {
+var beatmap = module.exports = {};
+
+var music, bmap, record, index;
+
+beatmap.load = function() {
   var query = window.location.search.substr(1);
   var name = qs.parse(query).beatmap;
   if(!name)
     return Promise.reject(new Error('no beatmap'));
-
   var filePath = 'beatmaps/' + name;
   return Promise.all([load(filePath + '.mp3'), load(filePath + '.json')])
   .then(function(res) {
-    var music = res[0];
-    var data = res[1];
-    return {
-      state: function(index) {
-        if(data.length <= index) return 'end';
-        var currentTime = music.currentTime * 1000;
-        var rang = currentTime - data[index][0]
-        var abs = Math.abs(rang);
-        if(abs < 25) return 'good';
-        if(abs < 75) return 'pass';
-        if(rang < -108) return 'before';
-        if(rang > 75) return 'after'
-        return 'miss';
-      },
-      data: data,
-      music: music,
-      toggle: function() {
-        if(music.paused) music.play();
-        else music.pause();
-      },
-      reset: function() {
-        music.pause();
-        music.currentTime = 0;
-      },
-      speed: function() {
-        if(music.playbackRate == 1) {
-          music.playbackRate = 0.75;
-        }
-        else {
-          music.playbackRate = 1;
-        }
-      }
-    };
+    music = res[0];
+    bmap = res[1];
+    record = [];
+    index = 0;
   });
+};
+
+beatmap.result = function(i) {
+  if(i == null || i == undefined) i = index;
+
+  if(music.paused || bmap.length <= i) return 'before';
+
+  var currentTime = music.currentTime * 1000;
+  var rang = currentTime - bmap[i][0]
+  var abs = Math.abs(rang);
+
+  if(abs < 25) return 'good';
+  if(abs < 75) return 'pass';
+
+  if(rang < -108) return 'before';
+  if(rang > 75) return 'after';
+
+  return 'miss';
+};
+
+beatmap.search = function() {
+  var pre = index;
+  while(beatmap.result(index) == 'after') index++;
+  return pre != index;
+};
+
+beatmap.hit = function(donka) {
+  var code = donka == 'don'? 0 : 8;
+  var res = beatmap.result(index);
+  record[index] = (res == 'good' || res == 'pass' || res == 'miss');
+
+  if(!record[index]) return res;
+
+  var ans = bmap[index++][1];
+  if(code == ans) {
+    return res;
+  }
+  else {
+    return 'miss';
+  }
+
+};
+
+beatmap.play = function() {
+  if(music.paused) music.play();
+  else music.pause();
+};
+
+beatmap.reset = function() {
+  music.pause();
+  music.currentTime = 0;
+  record = [];
+  index = 0;
+};
+
+beatmap.speed = function() {
+  if(music.playbackRate == 1) {
+    music.playbackRate = 0.75;
+  }
+  else {
+    music.playbackRate = 1;
+  }
+};
+
+beatmap.state = function() {
+  return {
+    beatmap: bmap,
+    record: record,
+    index: index,
+    time: music.currentTime * 1000
+  };
 };
 
 },{"./load":10,"querystring":4}],7:[function(require,module,exports){
 var load = require('./load');
 
-module.exports = function(context) {
-  function genMap(count, max) {
-    var res = [];
-    for(var i = 0; i <= count; i++) {
-      res.push(max * Math.sin(Math.PI * i / count));
-    }
-    return res;
+var images, context;
+
+var combo = {
+  count: 0,
+  state: 7,
+  from: 7,
+  to: 10,
+  centerX: 400,
+  bottomY: 400,
+  width: 40,
+  height: 60
+};
+
+var fire = {
+  arr: [],
+  centerX: 84,
+  centerY: 160,
+  radius: 70,
+  from: 7,
+  to: 14
+};
+
+var drum = {
+  y: 500,
+  x: 25,
+  div: 150,
+  radius: 50,
+  rect: {
+    fromX: 0, fromY: 400,
+    toX: 800, toY: 600
+  },
+  colors: {
+    lk: '#5FC1C0',
+    ld: '#E9311A',
+    rd: '#E9311A',
+    rk: '#5FC1C0'
   }
-  var mapArr = genMap(20, 70);
-  var mapStrArr = genMap(20, 70);
+};
 
-  function drawStr(img, centerX, bottomY, stage) {
-    var height = mapStrArr[stage];
-    var width = 40;
-    var x = centerX - width / 2;
-    var y = bottomY - height;
+var track = {
+  duration: 1800,
+  fromX: 0,
+  toX: 800,
+  y: 160,
+  dest: 84,
+  radius: 32
+};
 
-    return context.drawImage(img, x, y, width, height);
-  }
+function genAnmap(max) {
+  return Array.apply(null, {length: 21}).map(function(e, i) {
+    return max * Math.sin(Math.PI * i / 20);
+  });
+}
 
-  function appear(img, stage) {
-    var centerX = 84;
-    var centerY = 160;
+exports.load = function() {
 
-    circle(img, centerX, centerY, mapArr[stage]);
-  }
+  loadTrack();
 
-  function circle(img, centerX, centerY, radius) {
-    var x = centerX - radius;
-    var y = centerY - radius;
-    var diameter = radius * 2;
-    return context.drawImage(img, x, y, diameter, diameter);
-  }
+  combo.anmap = genAnmap(combo.height);
+  fire.anmap = genAnmap(fire.radius);
 
-  function keyArc(centerX, centerY, color) {
-    context.beginPath();
-    context.arc(centerX, centerY, 50, 0, 2 * Math.PI, false);
-    context.closePath();
-    context.fillStyle = color;
-    context.fill();
-    context.strokeStyle = "black";
-    context.stroke();
-  }
+  var canvas = document.getElementById('canvas');
+  context = canvas.getContext('2d');
 
   var tasks = [];
   for(var i = 0; i < 10; i++) {
     tasks.push('assets/score-' + i + '.png');
   }
   tasks = tasks.concat([
-    'assets/red.png',
-    'assets/blue.png',
-    'assets/good.png',
-    'assets/pass.png'
+                       'assets/red.png',
+                       'assets/blue.png',
+                       'assets/good.png',
+                       'assets/pass.png'
   ]).map(load);
 
-  return Promise.all(tasks).then(function(imgs) {
-    var colors = ['#5FC1C0', '#E9311A', '#E9311A', '#5FC1C0'];
-    return {
-      score: function(count) {
-        var c = count.toString();
-        context.fillStyle = 'black';
-        context.font="50px Arial";
-        //context.font="50px Georgia";
-        var width = context.measureText(c).width;
-        context.fillText(c, 790 - width, 50);
-      },
-      good: appear.bind(null, imgs[12]),
-      pass: appear.bind(null, imgs[13]),
-      face: function(centerX, centerY, donka, radius) {
-        var img;
-        if(donka == 'don') {
-          img = imgs[10];
-        }
-        else {
-          img = imgs[11];
-        }
-        circle(img, centerX, centerY, radius);
-      },
-      combo: function(numb) {
-        var centerX = 400;
-        var bottomY = 400;
-        var strArr = numb.count.toString().split('');
-        centerX -= (strArr.length * 20 - 20);
-        strArr.forEach(function(str) {
-          drawStr(imgs[str], centerX, bottomY, numb.stage);
-          centerX += 40;
-        });
-      },
-      key: function(press) {
-        context.clearRect(0, 400, 800, 600);
-        var centerY = 500;
-        var centerX = 25;
-        ['lk', 'ld', 'rd', 'rk'].forEach(function(active, i) {
-          var color = press[active]?colors[i]:'white';
-          centerX += 150;
-          keyArc(centerX, centerY, color);
-        });
-      },
-      clear:function() {
-        context.clearRect(0, 0, 800, 400);
-      }
-    };
-  })
+  return Promise.all(tasks).then(function(img) { images = img; });
 };
 
-},{"./load":10}],8:[function(require,module,exports){
-module.exports={
-  "y": 160,
-  "dest": 84,
-  "src": 800,
-  "radius": 32,
-  "duration": 1500
+exports.clear = function() {
+  context.clearRect(0, 0, 800, 400);
+};
+
+exports.score = function(score) {
+  var c = score.toString();
+  context.fillStyle = 'black';
+  context.font="50px Arial";
+  //context.font="50px Georgia";
+  var width = context.measureText(c).width;
+  context.fillText(c, 790 - width, 50);
+};
+
+exports.loop = function() {
+
+  if(combo.show && combo.state <= combo.to) {
+    var x = combo.fromX;
+    combo.str.forEach(function(s) {
+      var height = combo.anmap[combo.stage];
+      var y = combo.bottomY - height;
+      context.drawImage(images[s], x, y, combo.width, height);
+      x += combo.width;
+    });
+    combo.stage++;
+    if(combo.stage > combo.to) combo.stage = combo.to;
+  }
+
+  fire.arr = fire.arr.filter(function(state) {
+    return state.stage <= fire.to;
+  }).map(function(state) {
+    var radius = fire.anmap[state.stage];
+    var x = fire.centerX - radius;
+    var y = fire.centerY - radius;
+    var diameter = radius * 2;
+    context.drawImage(state.img, x, y, diameter, diameter);
+    state.stage++;
+    return state;
+  });
+};
+
+exports.combo = function(count) {
+  combo.show = (count && count >= 10);
+  if(!combo.show) return;
+  combo.str = count.toString().split('');
+  combo.fromX = combo.centerX - combo.str.length * combo.width / 2;
+  combo.stage = combo.from;
+};
+
+exports.fire = function(res) {
+  var state = {stage: fire.from};
+  if(res == 'good') state.img = images[12];
+  else state.img = images[13];
+  fire.arr.push(state);
+};
+
+exports.drum = function(state) {
+  var rect = drum.rect;
+  context.clearRect(rect.fromX, rect.fromY, rect.toX, rect.toY);
+  var centerX = drum.x;
+  var pi2 = 2 * Math.PI;
+  Object.keys(drum.colors).forEach(function(key) {
+    centerX += drum.div;
+    context.beginPath();
+    context.arc(centerX, drum.y, drum.radius, 0, pi2, false);
+    context.closePath();
+    context.fillStyle = state[key]?drum.colors[key]:'white';
+    context.fill();
+    context.strokeStyle = "black";
+    context.stroke();
+  });
+};
+
+function loadTrack() {
+  track.fx = track.fromX - track.radius;
+  track.tx = track.toX + track.radius;
+  track.dy = track.y - track.radius;
+
+  track.diameter = track.radius * 2;
+
+  track.v = (track.tx - track.fx) / track.duration;
+
+  track.timeFrom = (track.fx - track.dest) / track.v;
+  track.timeTo = track.timeFrom + track.duration;
+
 }
 
-},{}],9:[function(require,module,exports){
-var state = {
-  running: false,
-  score: 0,
-  auto: false,
-  index: 0,
-  keyPress: {
-    ld: false,
-    rd: false,
-    lk: false,
-    rk: false
-  },
-  codeMap: {
-    74: 'rd',
-    70: 'ld',
-    68: 'lk',
-    75: 'rk'
-  },
-  cmdMap: {
-    80: 'toggle',
-    82: 'reset',
-    83: 'speed',
-    65: 'auto'
-  },
-  res: [],
-  record: [],
-  combo: {
-    count: 0,
-    stage: 7
+exports.track = function(state) {
+
+  var img, beat;
+  var fromT = track.timeFrom + state.time;
+  var toT = track.timeTo + state.time;
+
+  var i = state.index;
+  while(i < state.beatmap.length && state.beatmap[i][0] <= toT) i++;
+  while(--i > -1 && state.beatmap[i][0] >= fromT) {
+    if(!state.record[i]) {
+      beat = state.beatmap[i];
+      img = beat[1] == 0?images[10]:images[11];
+      var x = (beat[0] - fromT) * track.v + track.fx - track.radius;
+      context.drawImage(img, x, track.dy, track.diameter, track.diameter);
+    }
   }
 };
 
-var EventEmitter = require('events');
-var canvas = require('./canvas');
+exports.score = function(score) {
+  var c = score.toString();
+  context.fillStyle = 'black';
+  context.font="50px Arial";
+  //context.font="50px Georgia";
+  var width = context.measureText(c).width;
+  context.fillText(c, 790 - width, 50);
+};
+
+},{"./load":10}],8:[function(require,module,exports){
+var Event = require('events');
+
+var graph = require('./graph');
 var audio = require('./audio');
 var beatmap = require('./beatmap');
+var key = require('./key');
 
-var config = require('./config');
+var state = {
+  score: 0,
+  combo: 0,
+  auto: false
+};
 
-var taiko = new EventEmitter();
-
-taiko.on('load', function(canvasAPI, audioAPI, beatmapAPI) {
-  taiko.on('count', function(judge) {
-    state.record[state.index] = true;
-    state.index++;
-    state.combo.count++;
-    state.combo.stage = 7;
-    if(judge == 'good') state.score += 3;
-    else state.score += 1;
-    state.res.push({
-      type: judge,
-      stage: 7
-    });
-  });
-  taiko.on('miss', function() {
-    state.index++;
-    state.combo.count = 0;
-  });
-
-  taiko.on('hit', function(act) {
-    var code;
-    if(act.endsWith('d')) {
-      code = 0;
-      audioAPI.don();
-    }
-    else {
-      code = 8;
-      audioAPI.ka();
-    }
-    if(!beatmapAPI.music.paused && state.index < beatmapAPI.data.length) {
-      var res = beatmapAPI.state(state.index);
-      var currectCode = beatmapAPI.data[state.index][1];
-
-      state.record[state.index] = true;
-      if(res == 'good' || res == 'pass') {
-        if(currectCode == code)
-          taiko.emit('count', res);
-        else
-          taiko.emit('miss');
-      }
-      else if(res == 'miss') {
-        taiko.emit('miss');
-      }
-      else {
-        state.record[state.index] = false;
-      }
-    }
-  });
-
-  taiko.on('cmd', function(cmd) {
-    if(cmd == 'auto') {
-      return state.auto = !state.auto;
-    }
-    if(cmd == 'reset') {
-      state.record = [];
-      state.score = 0;
-      state.index = 0;
-      state.combo.count = 0;
-    }
-    beatmapAPI[cmd]();
-  });
-
-  window.addEventListener('keydown', function(event) {
-    var cmd = state.cmdMap[event.keyCode];
-    if(cmd) taiko.emit('cmd', cmd);
-    var act = state.codeMap[event.keyCode];
-    if(act && !state.keyPress[act]) {
-      state.keyPress[act] = true;
-      canvasAPI.key(state.keyPress);
-      taiko.emit('hit', act);
-    }
-  });
-
-  window.addEventListener('keyup', function(event) {
-    var act = state.codeMap[event.keyCode];
-    if(act) {
-      state.keyPress[act] = false;
-      canvasAPI.key(state.keyPress);
-    }
-  });
-
-  if(state.running) return;
-  state.running = true;
-
-  canvasAPI.key(state.keyPress);
-  setInterval(function() {
-    canvasAPI.clear();
-    canvasAPI.score(state.score);
-    if(state.combo.count > 0) {
-      canvasAPI.combo(state.combo);
-      if(state.combo.stage < 10)
-        state.combo.stage++;
-    }
-    state.res.filter(function(state) {
-      return state.stage < 15;
-    }).forEach(function(state) {
-      canvasAPI[state.type](state.stage);
-      state.stage = state.stage + 1;
-    });
-
-    var data = beatmapAPI.data;
-    var currentTime = beatmapAPI.music.currentTime * 1000;
-    //'before', 'miss', 'pass', 'good', 'pass', 'after'
-    //
-    if(state.auto && beatmapAPI.state(state.index) == 'good') {
-      var beat;
-      if(beatmapAPI.data[state.index][1] == 0) beat = 'd';
-      else beat = 'k';
-      taiko.emit('hit', beat);
-    }
-
-    while(beatmapAPI.state(state.index) == 'after')
-      taiko.emit('miss');
-    var i = state.index;
-    while(i < data.length && data[i][0] - currentTime < config.duration) i++;
-
-    var src = config.src + config.radius;
-    var tpp = config.duration / (src - config.dest);
-
-    while(--i >= state.index) {
-      var time = data[i][0] - currentTime;
-      var src = config.src + config.radius;
-      var centerX = time / tpp + config.dest;
-      var face = data[i][1] == 0? 'don': 'ka';
-      canvasAPI.face(centerX, config.y, face, config.radius);
-    }
-
-    var newDest = 0 - config.radius;
-    var newSrc = config.dest;
-    var newDuration = tpp * (newSrc - newDest);
-
-    while(i >= 0 && currentTime - data[i][0] < newDuration) {
-      if(!state.record[i]) {
-        var time = currentTime - data[i][0];
-        var centerX = newSrc - (time / tpp);
-        var face = data[i][1] == 0? 'don': 'ka';
-        canvasAPI.face(centerX, config.y, face, config.radius);
-      }
-      --i;
-    };
-
-  }, 16);
-});
+var taiko = new Event();
 
 window.addEventListener('load', function() {
-  var can = document.getElementById('canvas');
-  var context = can.getContext('2d');
-  Promise.all([canvas(context), audio(), beatmap()]).then(function(apis) {
-    taiko.emit('load', apis[0], apis[1], apis[2]);
+
+  var loads = [graph.load(), audio.load(), beatmap.load()];
+
+  Promise.all(loads).then(function() {
+
+    graph.drum({});
+
+    key.on('hit', function(donka, drum_state) {
+      var dk = donka.endsWith('d')?'don':'ka';
+      graph.drum(drum_state);
+      taiko.emit('hit', dk);
+    });
+
+    key.on('hitup', function(donka, drum_state) {
+      graph.drum(drum_state);
+    });
+    key.on('play', beatmap.play);
+    key.on('reset', function() {
+      state.score = 0;
+      state.combo = 0;
+      graph.combo(0);
+      beatmap.reset();
+    });
+    key.on('speed', beatmap.speed);
+    key.on('auto', function() {
+      state.auto = !state.auto;
+    });
+
+    taiko.on('hit', function(dk) {
+      audio.play(dk);
+      var res = beatmap.hit(dk);
+      if(res == 'good' || res == 'pass')
+        taiko.emit('ok', res);
+      taiko.emit(res);
+
+    });
+
+    taiko.on('ok', function(res) {
+      graph.combo(++state.combo);
+      graph.fire(res);
+    });
+    taiko.on('good', function() {
+      state.score += 3;
+    });
+    taiko.on('pass', function() {
+      state.score += 1;
+    });
+    taiko.on('miss', function() {
+      state.combo = 0;
+      graph.combo(0);
+    });
+
+    key.load();
+    setInterval(loop, 16);
   }).catch(function(e) {
     alert(e.message);
     console.log(e);
   });
+
 });
 
-},{"./audio":5,"./beatmap":6,"./canvas":7,"./config":8,"events":1}],10:[function(require,module,exports){
+function loop() {
+  var missed = beatmap.search();
+  if(missed) taiko.emit('miss');
+
+  graph.clear();
+  graph.loop();
+  graph.track(beatmap.state());
+  graph.score(state.score);
+
+  if(state.auto && beatmap.result() == 'good') {
+    var bstate = beatmap.state();
+    var beat;
+    if(bstate.beatmap[bstate.index][1] == 0) beat = 'don';
+    else beat = 'ka';
+
+    taiko.emit('hit', beat);
+  }
+};
+
+},{"./audio":5,"./beatmap":6,"./graph":7,"./key":9,"events":1}],9:[function(require,module,exports){
+var Event = require('events');
+
+var state = {
+  ld: false,
+  rd: false,
+  lk: false,
+  rk: false
+};
+
+var maps = {
+  command: {
+    80: 'play',
+    82: 'reset',
+    83: 'speed',
+    65: 'auto'
+  },
+  hit: {
+    74: 'rd',
+    70: 'ld',
+    68: 'lk',
+    75: 'rk'
+  }
+};
+var key = module.exports = new Event();
+
+key.load = function() {
+
+  window.addEventListener('keydown', function(event) {
+    var act = maps.hit[event.keyCode];
+    if(act && !state[act]) {
+      state[act] = true;
+      key.emit('hit', act, state);
+    }
+  });
+
+  window.addEventListener('keyup', function(event) {
+    var cmd = maps.command[event.keyCode];
+    if(cmd) return key.emit(cmd);
+
+    var act = maps.hit[event.keyCode];
+    if(act) {
+      state[act] = false;
+      key.emit('hitup', act, state);
+    }
+  });
+};
+
+},{"events":1}],10:[function(require,module,exports){
 function xhr(link, type) {
   return new Promise(function(res, rej) {
     var request = new XMLHttpRequest();
@@ -908,4 +977,4 @@ module.exports = function(link) {
   }
 };
 
-},{}]},{},[9]);
+},{}]},{},[8]);
